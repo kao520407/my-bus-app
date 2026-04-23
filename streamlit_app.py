@@ -35,20 +35,17 @@ def get_api_data(token, endpoint):
         url = f"https://tdx.transportdata.tw/api/basic/v2/Bus/{endpoint}/City/{city}?$format=JSON"
         try:
             r = requests.get(url, headers=headers, timeout=15)
-            # --- 新增診斷代碼 ---
+            # 如果呼叫失敗，直接印出錯誤訊息
             if r.status_code != 200:
                 st.error(f"📡 API 呼叫失敗! 城市: {city}, 代碼: {r.status_code}")
-                st.write(f"錯誤詳情: {r.text}") 
-            # ------------------
-            if r.status_code == 200:
+                st.write(f"錯誤詳情: {r.text}")
+            else:
                 combined.extend(r.json())
         except Exception as e:
-            st.warning(f"連線異常: {e}")
-            continue
+            st.warning(f"連線異常 ({city}): {e}")
+            continue # 發生連線問題就跳過這個城市
+            
     return pd.DataFrame(combined)
-    except: continue
-    return pd.DataFrame(combined)
-
 # --- 3. 主流程 ---
 token = get_token()
 if token:
