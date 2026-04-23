@@ -1,0 +1,6 @@
+Plaintext
+streamlit
+requests
+pandas
+folium
+streamlit-folium
