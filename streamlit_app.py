@@ -17,7 +17,7 @@ except:
     st.stop()
 
 # --- 3. 工具函式 ---
-@st.cache_data(ttl=60) # 縮短快取時間，讓動態更即時
+@st.cache_data(ttl=60)
 def get_token():
     auth_url = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
     payload = {'grant_type': 'client_credentials', 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}
@@ -42,19 +42,22 @@ if token:
     with st.sidebar:
         st.header("🔍 搜尋站點")
         search_query = st.text_input("請輸入站牌名稱", "政大")
-        st.write("---")
-        st.info("💡 網頁每分鐘會自動更新動態。")
+        st.info("💡 站點資料載入中，請稍候...")
 
     with st.spinner("🔄 正在讀取雙北即時公車資訊..."):
         df_stops = get_bus_data(token, "Stop")
         df_eta = get_bus_data(token, "EstimatedTimeOfArrival")
 
+    # --- 關鍵修正：安全檢查欄位 ---
     if not df_stops.empty and 'StopName' in df_stops.columns:
-        # 解決 unhashable type 問題：先將名稱轉為純文字
+        # 提取站名
         df_stops['Name_Zh'] = df_stops['StopName'].apply(lambda x: x.get('Zh_tw', '') if isinstance(x, dict) else '')
         df_filtered = df_stops[df_stops['Name_Zh'].str.contains(search_query.strip())].copy()
 
         if not df_filtered.empty:
+            # 找出 UID 欄位到底是哪個 (可能是 StopUID 或 StopID)
+            uid_col = 'StopUID' if 'StopUID' in df_stops.columns else 'StopID' if 'StopID' in df_stops.columns else None
+            
             avg_lat = df_filtered['StopPosition'].apply(lambda x: x['PositionLat']).mean()
             avg_lon = df_filtered['StopPosition'].apply(lambda x: x['PositionLon']).mean()
             m = folium.Map(location=[avg_lat, avg_lon], zoom_start=17, tiles='https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google')
@@ -62,18 +65,19 @@ if token:
             for name, group in df_filtered.groupby('Name_Zh'):
                 lat = group['StopPosition'].apply(lambda x: x['PositionLat']).mean()
                 lon = group['StopPosition'].apply(lambda x: x['PositionLon']).mean()
-                uids = group['StopUID'].tolist()
                 
-                # 處理 ETA 資料
-                etas = df_eta[df_eta['StopUID'].isin(uids)].copy()
-                
-                html_body = f'<div style="width:250px;font-family:sans-serif;"><div style="background:#2c3e50;color:#ffce00;padding:8px;text-align:center;font-weight:bold;border-radius:5px 5px 0 0;">{name}</div>'
+                # 如果找不到 UID 欄位，就顯示警告
+                if uid_col and uid_col in df_eta.columns:
+                    uids = group[uid_col].tolist()
+                    etas = df_eta[df_eta[uid_col].isin(uids)].copy()
+                else:
+                    etas = pd.DataFrame()
+
+                html_body = f'<div style="width:250px;font-family:sans-serif;"><div style="background:#2c3e50;color:#ffce00;padding:8px;text-align:center;font-weight:bold;">{name}</div>'
                 
                 if not etas.empty:
-                    # 先處理路線名稱為純文字，避免 drop_duplicates 失敗
+                    # 統一將路線名轉文字
                     etas['RouteName_Zh'] = etas['RouteName'].apply(lambda x: x.get('Zh_tw', '') if isinstance(x, dict) else str(x))
-                    
-                    # 排序並過濾重複路線
                     unique_etas = etas.sort_values('EstimateTime').drop_duplicates(subset=['RouteName_Zh', 'Direction'])
                     
                     for _, row in unique_etas.iterrows():
@@ -81,7 +85,6 @@ if token:
                         dest = row.get('DestinationName', {}).get('Zh_tw', '即時動態') if isinstance(row.get('DestinationName'), dict) else '即時動態'
                         sec = row.get('EstimateTime')
                         
-                        # 顯示狀態
                         if pd.isna(sec): t, c = "未發車", "#9ca3af"
                         elif sec <= 30: t, c = "進站中", "#dc2626"
                         elif sec <= 90: t, c = "將到站", "#ea580c"
@@ -90,7 +93,7 @@ if token:
                         html_body += f'''
                         <div style="display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #eee;align-items:center;">
                             <div><b>{r_name}</b><br><small style="color:#666;">往 {dest}</small></div>
-                            <div style="color:{c};font-weight:bold;font-size:14px;">{t}</div>
+                            <div style="color:{c};font-weight:bold;">{t}</div>
                         </div>'''
                 else:
                     html_body += '<div style="padding:20px;text-align:center;color:#999;">目前無即時班次</div>'
@@ -100,4 +103,6 @@ if token:
 
             st_folium(m, width=None, height=600, use_container_width=True)
         else:
-            st.warning(f"🔎 找不到「{search_query}」站牌，請換個詞試試。")
+            st.warning(f"🔎 找不到「{search_query}」相關站牌。")
+    else:
+        st.error("📡 無法讀取站點欄位，請檢查 API 回傳資料。")
