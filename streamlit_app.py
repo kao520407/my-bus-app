@@ -80,15 +80,7 @@ if token:
                     g_pos = group.iloc[0]['StopPosition']
                     # 匹配即時動態
                     this_etas = df_eta[df_eta[e_id].isin(group[s_id].unique())] if e_id is not None else pd.DataFrame()
-                    # 在發送請求後，加入這兩行來抓出真正的錯誤原因
-                        response = requests.get(api_url, headers=headers)
-                        if response.status_code != 200:
-                        st.error(f"API 錯誤碼: {response.status_code}")
-                        st.write(f"錯誤訊息: {response.text}") # 這行會告訴我們為什麼 TDX 不給資料
-                        # 修改這部分，確保它能抓到錯誤
-                        if df_stops.empty:
-                        st.error("📡 站點資料抓取失敗，請檢查 API 權限或金鑰格式。")
-                        # 如果你想看更細節的錯誤，請確認前面的 get_api_data 函式內有加上 print 或 st.write
+                   
                     html = f"<b>{name}</b><hr>"
                     if not this_etas.empty:
                         this_etas['R'] = this_etas['RouteName'].apply(lambda x: x.get('Zh_tw', '') if isinstance(x, dict) else str(x))
