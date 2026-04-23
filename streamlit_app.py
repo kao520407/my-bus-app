@@ -46,7 +46,7 @@ def get_api_data(token, endpoint):
             st.warning(f"連線異常: {e}")
             continue
     return pd.DataFrame(combined)
-        except: continue
+            except: continue
     return pd.DataFrame(combined)
 
 # --- 3. 主流程 ---
